@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ES2020",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "rootDir": "app/static/src",
+    "outDir": "app/static/dist"
+  },
+  "include": ["app/static/src/**/*.ts"]
+}

@@ -1,0 +1,10 @@
+$ErrorActionPreference = 'Stop'
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+npm install
+npm run build
+
+Write-Host "Build complete. Run the app with: .\.venv\Scripts\Activate.ps1; flask --app app.py run"
