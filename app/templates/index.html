@@ -73,6 +73,35 @@
             padding: 20px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 18px 22px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        .chart-card h2 { margin: 4px 0 12px; color: #1f2937; }
+        .chart-legend {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+            color: #374151;
+        }
+        .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        #chart-container {
+            width: 100%;
+            height: 280px;
+            background: linear-gradient(180deg, rgba(17,24,39,0.02), rgba(17,24,39,0));
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        #chart svg { width: 100%; height: 100%; }
+        .chart-placeholder { color: #6b7280; font-size: 0.95em; padding: 18px 12px; }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -141,6 +170,18 @@
         {% endif %}
         
         <!-- Readings History -->
+        <div class="chart-card">
+            <h2>Trends (last {{ readings|length if readings|length < 20 else 20 }} readings)</h2>
+            <div class="chart-legend">
+                <span><span class="dot" style="background:#ef4444"></span>Temperature (°C)</span>
+                <span><span class="dot" style="background:#3b82f6"></span>Humidity (%)</span>
+                <span><span class="dot" style="background:#22c55e"></span>Light (lux)</span>
+            </div>
+            <div id="chart-container">
+                <div id="chart" role="img" aria-label="Sensor readings line chart"></div>
+            </div>
+        </div>
+
         <div class="readings-table">
             <h2>Recent Readings (Last {{ readings|length }} of 20 shown)</h2>
             <table>
@@ -220,6 +261,112 @@
                     });
                 });
             }
+        })();
+
+        // Chart rendering for the last readings (no external deps).
+        (function () {
+            const chartHost = document.getElementById('chart');
+            if (!chartHost) return;
+
+            const readings = {{ readings[-20:] | tojson }};
+            if (!Array.isArray(readings) || readings.length === 0) {
+                chartHost.innerHTML = '<div class=\"chart-placeholder\">No data yet. Send a reading to see the trend.</div>';
+                return;
+            }
+
+            const leftSeries = [
+                { key: 'temperature', color: '#ef4444', label: 'Temperature', unit: '°C' },
+                { key: 'humidity',    color: '#3b82f6', label: 'Humidity', unit: '%' }
+            ];
+            const rightSeries = [
+                { key: 'light',       color: '#22c55e', label: 'Light', unit: 'lux' }
+            ];
+
+            const leftData = leftSeries.map(s => readings.map(r => Number(r[s.key]) || 0));
+            const rightData = rightSeries.map(s => readings.map(r => Number(r[s.key]) || 0));
+
+            const flatLeft = leftData.flat();
+            const flatRight = rightData.flat();
+
+            let minLeft = Math.min(...flatLeft);
+            let maxLeft = Math.max(...flatLeft);
+            if (minLeft === maxLeft) { minLeft -= 1; maxLeft += 1; }
+
+            let minRight = Math.min(...flatRight);
+            let maxRight = Math.max(...flatRight);
+            if (minRight === maxRight) { minRight -= 1; maxRight += 1; }
+
+            const width = chartHost.clientWidth || 640;
+            const height = chartHost.clientHeight || 280;
+            const padding = { top: 16, right: 44, bottom: 26, left: 44 };
+            const innerW = width - padding.left - padding.right;
+            const innerH = height - padding.top - padding.bottom;
+
+            const xFor = (i) => padding.left + (innerW * i) / Math.max(readings.length - 1, 1);
+            const yForLeft = (value) => padding.top + innerH - ((value - minLeft) / (maxLeft - minLeft)) * innerH;
+            const yForRight = (value) => padding.top + innerH - ((value - minRight) / (maxRight - minRight)) * innerH;
+
+            // Build tick values for nicer scales.
+            const buildTicks = (min, max) => {
+                const span = max - min;
+                const rough = span / 4;
+                const magnitude = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+                const niceStep = Math.ceil(rough / magnitude) * magnitude;
+                const first = Math.floor(min / niceStep) * niceStep;
+                const ticks = [];
+                for (let v = first; v <= max + niceStep; v += niceStep) {
+                    if (v >= min - 1e-6 && v <= max + 1e-6) ticks.push(v);
+                }
+                return ticks.slice(0, 6);
+            };
+
+            const leftTicks = buildTicks(minLeft, maxLeft);
+            const rightTicks = buildTicks(minRight, maxRight);
+
+            const leftLines = leftData.map((values, idx) => {
+                const points = values.map((v, i) => `${xFor(i)},${yForLeft(v)}`).join(' ');
+                return `<polyline points=\"${points}\" fill=\"none\" stroke=\"${leftSeries[idx].color}\" stroke-width=\"2.3\" />`;
+            }).join('');
+
+            const rightLines = rightData.map((values, idx) => {
+                const points = values.map((v, i) => `${xFor(i)},${yForRight(v)}`).join(' ');
+                return `<polyline points=\"${points}\" fill=\"none\" stroke=\"${rightSeries[idx].color}\" stroke-width=\"2.3\" />`;
+            }).join('');
+
+            const hGrid = leftTicks.map(v => {
+                const y = yForLeft(v);
+                return `
+                    <line x1=\"${padding.left}\" y1=\"${y}\" x2=\"${width - padding.right}\" y2=\"${y}\" stroke=\"#e5e7eb\" stroke-width=\"1\" />
+                    <text x=\"${padding.left - 8}\" y=\"${y + 4}\" text-anchor=\"end\" fill=\"#6b7280\" font-size=\"11\">${v.toFixed(1)}</text>
+                `;
+            }).join('');
+
+            const rightLabels = rightTicks.map(v => {
+                const y = yForRight(v);
+                return `<text x=\"${width - padding.right + 8}\" y=\"${y + 4}\" text-anchor=\"start\" fill=\"#6b7280\" font-size=\"11\">${v.toFixed(0)}</text>`;
+            }).join('');
+
+            const svg = `
+                <svg viewBox=\"0 0 ${width} ${height}\" preserveAspectRatio=\"none\" aria-hidden=\"false\">
+                    <rect x=\"${padding.left}\" y=\"${padding.top}\" width=\"${innerW}\" height=\"${innerH}\" fill=\"url(#bg)\" rx=\"6\" />
+                    ${hGrid}
+                    ${leftLines}
+                    ${rightLines}
+                    <text x=\"${padding.left}\" y=\"${padding.top - 4}\" fill=\"#374151\" font-size=\"12\">°C / %</text>
+                    <text x=\"${width - padding.right}\" y=\"${padding.top - 4}\" fill=\"#374151\" font-size=\"12\">lux</text>
+                    ${rightLabels}
+                    <text x=\"${padding.left}\" y=\"${height - 6}\" fill=\"#6b7280\" font-size=\"12\">Oldest</text>
+                    <text x=\"${width - padding.right - 38}\" y=\"${height - 6}\" fill=\"#6b7280\" font-size=\"12\">Newest</text>
+                    <defs>
+                        <linearGradient id=\"bg\" x1=\"0\" x2=\"0\" y1=\"0\" y2=\"1\">
+                            <stop offset=\"0%\" stop-color=\"#f8fafc\" />
+                            <stop offset=\"100%\" stop-color=\"#ffffff\" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+            `;
+
+            chartHost.innerHTML = svg;
         })();
     </script>
 </body>
