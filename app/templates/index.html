@@ -5,6 +5,38 @@
     <meta http-equiv="refresh" content="5"> <!-- Auto-refresh every 5 seconds -->
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; }
+        .dev-button {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #111827, #1f2937);
+            color: #f9fafb;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+            cursor: pointer;
+            transition: transform 120ms ease, box-shadow 120ms ease;
+        }
+        .dev-button:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(0,0,0,0.22); }
+        .dev-button:active { transform: translateY(0); box-shadow: 0 8px 18px rgba(0,0,0,0.2); }
+        .dev-toast {
+            position: fixed;
+            top: 16px;
+            left: 84px;
+            background: #111827;
+            color: #f9fafb;
+            padding: 10px 14px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+            font-size: 0.95em;
+            min-width: 180px;
+            display: none;
+        }
+        .dev-toast.show { display: inline-block; }
         .dashboard {
             max-width: 800px;
             margin: 0 auto;
@@ -76,6 +108,8 @@
     </style>
 </head>
 <body>
+    <button id="dev-button" class="dev-button" type="button" aria-label="Send dummy dev reading">dev</button>
+    <div id="dev-toast" class="dev-toast" role="status" aria-live="polite"></div>
     <div class="dashboard">
         <h1> Canopy Senso Dashboard</h1>
         
@@ -138,5 +172,55 @@
             </p>
         </div>
     </div>
+
+    <script>
+        // Lightweight dev helper to inject a dummy reading without leaving the page.
+        (function () {
+            const devButton = document.getElementById('dev-button');
+            const toast = document.getElementById('dev-toast');
+
+            const randomBetween = (min, max) => Number((Math.random() * (max - min) + min).toFixed(2));
+            const setToast = (text) => {
+                if (!toast) return;
+                toast.textContent = text;
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2500);
+            };
+
+            const sendDummyReading = async () => {
+                const payload = {
+                    temperature: randomBetween(18, 28),
+                    humidity: randomBetween(35, 70),
+                    light: randomBetween(150, 650),
+                };
+
+                try {
+                    const response = await fetch('/api/readings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!response.ok) {
+                        setToast('Dev send failed');
+                        return;
+                    }
+
+                    setToast(`Dev sent T=${payload.temperature}°C H=${payload.humidity}% L=${payload.light}lx`);
+                } catch (error) {
+                    setToast('Dev send failed');
+                }
+            };
+
+            if (devButton) {
+                devButton.addEventListener('click', () => {
+                    devButton.disabled = true;
+                    sendDummyReading().finally(() => {
+                        devButton.disabled = false;
+                    });
+                });
+            }
+        })();
+    </script>
 </body>
 </html>
